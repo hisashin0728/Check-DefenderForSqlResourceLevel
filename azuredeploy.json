@@ -1,0 +1,197 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-08-01/managementGroupDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Defender for SQL のリソース単位有効化を監査する Azure Policy を 2 つ（Azure SQL Database / Azure SQL Managed Instance）デプロイします。"
+  },
+  "parameters": {
+    "policyEffect": {
+      "type": "string",
+      "defaultValue": "AuditIfNotExists",
+      "allowedValues": [
+        "AuditIfNotExists",
+        "Disabled"
+      ],
+      "metadata": {
+        "description": "ポリシーの Effect。AuditIfNotExists（監査）または Disabled（無効）。両ポリシー共通。"
+      }
+    },
+    "assignPolicy": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "true にすると、ポリシー定義の作成と同時に管理グループへの割り当ても行います。"
+      }
+    }
+  },
+  "variables": {
+    "sqlDbPolicyDefinitionName": "custom-defender-for-sql-db-resource-audit",
+    "sqlDbPolicyAssignmentName": "dfsql-db-resource-audit",
+    "sqlMiPolicyDefinitionName": "custom-defender-for-sql-mi-resource-audit",
+    "sqlMiPolicyAssignmentName": "dfsql-mi-resource-audit"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Authorization/policyDefinitions",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('sqlDbPolicyDefinitionName')]",
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Azure SQL Database) - Resource Level Audit",
+        "policyType": "Custom",
+        "mode": "All",
+        "description": "各 Azure SQL Server（Microsoft.Sql/servers）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。Azure SQL Managed Instance は対象外です。",
+        "metadata": {
+          "version": "1.0.0",
+          "category": "Security Center"
+        },
+        "parameters": {
+          "effect": {
+            "type": "String",
+            "metadata": {
+              "displayName": "Effect",
+              "description": "AuditIfNotExists または Disabled"
+            },
+            "allowedValues": [
+              "AuditIfNotExists",
+              "Disabled"
+            ],
+            "defaultValue": "AuditIfNotExists"
+          }
+        },
+        "policyRule": {
+          "if": {
+            "allOf": [
+              {
+                "field": "type",
+                "equals": "Microsoft.Sql/servers"
+              },
+              {
+                "field": "kind",
+                "notContains": "analytics"
+              }
+            ]
+          },
+          "then": {
+            "effect": "[parameters('effect')]",
+            "details": {
+              "type": "Microsoft.Sql/servers/advancedThreatProtectionSettings",
+              "name": "Default",
+              "evaluationDelay": "AfterProvisioning",
+              "existenceCondition": {
+                "field": "Microsoft.Sql/servers/advancedThreatProtectionSettings/state",
+                "equals": "Enabled"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/policyDefinitions",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('sqlMiPolicyDefinitionName')]",
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Azure SQL Managed Instance) - Resource Level Audit",
+        "policyType": "Custom",
+        "mode": "All",
+        "description": "各 Azure SQL Managed Instance（Microsoft.Sql/managedInstances）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。Azure SQL Database（servers）は対象外です。",
+        "metadata": {
+          "version": "1.0.0",
+          "category": "Security Center"
+        },
+        "parameters": {
+          "effect": {
+            "type": "String",
+            "metadata": {
+              "displayName": "Effect",
+              "description": "AuditIfNotExists または Disabled"
+            },
+            "allowedValues": [
+              "AuditIfNotExists",
+              "Disabled"
+            ],
+            "defaultValue": "AuditIfNotExists"
+          }
+        },
+        "policyRule": {
+          "if": {
+            "field": "type",
+            "equals": "Microsoft.Sql/managedInstances"
+          },
+          "then": {
+            "effect": "[parameters('effect')]",
+            "details": {
+              "type": "Microsoft.Sql/managedInstances/advancedThreatProtectionSettings",
+              "name": "Default",
+              "evaluationDelay": "AfterProvisioning",
+              "existenceCondition": {
+                "field": "Microsoft.Sql/managedInstances/advancedThreatProtectionSettings/state",
+                "equals": "Enabled"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('sqlDbPolicyAssignmentName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/policyDefinitions', variables('sqlDbPolicyDefinitionName'))]"
+      ],
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Azure SQL Database) - Resource Level Audit",
+        "description": "各 Azure SQL Server（Microsoft.Sql/servers）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。",
+        "policyDefinitionId": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('sqlDbPolicyDefinitionName'))]",
+        "enforcementMode": "Default",
+        "parameters": {
+          "effect": {
+            "value": "[parameters('policyEffect')]"
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('sqlMiPolicyAssignmentName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/policyDefinitions', variables('sqlMiPolicyDefinitionName'))]"
+      ],
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Azure SQL Managed Instance) - Resource Level Audit",
+        "description": "各 Azure SQL Managed Instance（Microsoft.Sql/managedInstances）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。",
+        "policyDefinitionId": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('sqlMiPolicyDefinitionName'))]",
+        "enforcementMode": "Default",
+        "parameters": {
+          "effect": {
+            "value": "[parameters('policyEffect')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "sqlDbPolicyDefinitionId": {
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('sqlDbPolicyDefinitionName'))]"
+    },
+    "sqlDbPolicyAssignmentId": {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', variables('sqlDbPolicyAssignmentName'))]"
+    },
+    "sqlMiPolicyDefinitionId": {
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('sqlMiPolicyDefinitionName'))]"
+    },
+    "sqlMiPolicyAssignmentId": {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', variables('sqlMiPolicyAssignmentName'))]"
+    }
+  }
+}

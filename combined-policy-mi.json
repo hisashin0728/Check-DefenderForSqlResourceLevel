@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-09-01/policyDefinition.json#",
+  "name": "custom-defender-for-sql-mi-resource-audit",
+  "properties": {
+    "displayName": "[Custom] Defender for SQL (Azure SQL Managed Instance) - Resource Level Audit",
+    "policyType": "Custom",
+    "mode": "All",
+    "description": "各 Azure SQL Managed Instance（Microsoft.Sql/managedInstances）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。Azure SQL Database（servers）は対象外です。",
+    "metadata": {
+      "version": "1.0.0",
+      "category": "Security Center"
+    },
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "metadata": {
+          "displayName": "Effect",
+          "description": "AuditIfNotExists または Disabled"
+        },
+        "allowedValues": [
+          "AuditIfNotExists",
+          "Disabled"
+        ],
+        "defaultValue": "AuditIfNotExists"
+      }
+    },
+    "policyRule": {
+      "if": {
+        "field": "type",
+        "equals": "Microsoft.Sql/managedInstances"
+      },
+      "then": {
+        "effect": "[parameters('effect')]",
+        "details": {
+          "type": "Microsoft.Sql/managedInstances/advancedThreatProtectionSettings",
+          "name": "Default",
+          "evaluationDelay": "AfterProvisioning",
+          "existenceCondition": {
+            "field": "Microsoft.Sql/managedInstances/advancedThreatProtectionSettings/state",
+            "equals": "Enabled"
+          }
+        }
+      }
+    }
+  }
+}
