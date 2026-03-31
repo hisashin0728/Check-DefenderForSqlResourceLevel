@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-09-01/policyDefinition.json#",
-  "name": "custom-defender-for-sql-db-resource-audit",
+  "name": "custom-defender-for-synapse-ded-audit",
   "properties": {
-    "displayName": "[Custom] Defender for SQL (Azure SQL Database) - Resource Level Audit",
+    "displayName": "[Custom] Defender for SQL (Synapse Dedicated SQL Pool) - Resource Level Audit",
     "policyType": "Custom",
     "mode": "All",
-    "description": "各 Azure SQL Server（Microsoft.Sql/servers）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。Azure SQL Managed Instance は対象外です。",
+    "description": "旧来の Synapse Analytics 専用 SQL プール（Microsoft.Sql/servers の kind に analytics を含む）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。",
     "metadata": {
       "version": "1.0.0",
       "category": "Security Center"
@@ -17,10 +17,7 @@
           "displayName": "Effect",
           "description": "AuditIfNotExists または Disabled"
         },
-        "allowedValues": [
-          "AuditIfNotExists",
-          "Disabled"
-        ],
+        "allowedValues": ["AuditIfNotExists", "Disabled"],
         "defaultValue": "AuditIfNotExists"
       }
     },
@@ -33,7 +30,7 @@
           },
           {
             "field": "kind",
-            "notContains": "analytics"
+            "contains": "analytics"
           }
         ]
       },

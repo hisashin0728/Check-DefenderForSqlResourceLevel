@@ -2,7 +2,7 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-08-01/managementGroupDeploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "metadata": {
-    "description": "Defender for Storage のリソース単位有効化を監査する Azure Policy をデプロイします。"
+    "description": "Defender for SQL のリソース単位有効化を監査する Azure Policy を 4 つ（Azure SQL Database / Azure SQL Managed Instance / Synapse Dedicated SQL Pool / Synapse Workspace）デプロイします。"
   },
   "parameters": {
     "policyEffect": {
@@ -13,7 +13,7 @@
         "Disabled"
       ],
       "metadata": {
-        "description": "ポリシーの Effect。AuditIfNotExists（監査）または Disabled（無効）。"
+        "description": "ポリシーの Effect。AuditIfNotExists（監査）または Disabled（無効）。両ポリシー共通。"
       }
     },
     "assignPolicy": {
@@ -25,19 +25,80 @@
     }
   },
   "variables": {
-    "policyDefinitionName": "custom-defender-for-storage-resource-audit",
-    "policyAssignmentName": "dfs-resource-audit"
+    "sqlDbPolicyDefinitionName": "custom-defender-for-sql-db-resource-audit",
+    "sqlDbPolicyAssignmentName": "dfsql-db-resource-audit",
+    "sqlMiPolicyDefinitionName": "custom-defender-for-sql-mi-resource-audit",
+    "sqlMiPolicyAssignmentName": "dfsql-mi-resource-audit",
+    "synapseDedPolicyDefinitionName": "custom-defender-for-synapse-ded-audit",
+    "synapseDedPolicyAssignmentName": "dfsql-syn-ded-audit",
+    "synapseWsPolicyDefinitionName": "custom-defender-for-synapse-ws-audit",
+    "synapseWsPolicyAssignmentName": "dfsql-syn-ws-audit"
   },
   "resources": [
     {
       "type": "Microsoft.Authorization/policyDefinitions",
       "apiVersion": "2023-04-01",
-      "name": "[variables('policyDefinitionName')]",
+      "name": "[variables('sqlDbPolicyDefinitionName')]",
       "properties": {
-        "displayName": "[Custom] Defender for Storage - Resource Level Audit",
+        "displayName": "[Custom] Defender for SQL (Azure SQL Database) - Resource Level Audit",
         "policyType": "Custom",
         "mode": "All",
-        "description": "各 Storage Account に対して、Defender for Storage がリソース単位（isEnabled: true）で有効化されていることを監査します。",
+        "description": "各 Azure SQL Server（Microsoft.Sql/servers）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。Azure SQL Managed Instance は対象外です。",
+        "metadata": {
+          "version": "1.0.0",
+          "category": "Security Center"
+        },
+        "parameters": {
+          "effect": {
+            "type": "String",
+            "metadata": {
+              "displayName": "Effect",
+              "description": "AuditIfNotExists または Disabled"
+            },
+            "allowedValues": [
+              "AuditIfNotExists",
+              "Disabled"
+            ],
+            "defaultValue": "AuditIfNotExists"
+          }
+        },
+        "policyRule": {
+          "if": {
+            "allOf": [
+              {
+                "field": "type",
+                "equals": "Microsoft.Sql/servers"
+              },
+              {
+                "field": "kind",
+                "notContains": "analytics"
+              }
+            ]
+          },
+          "then": {
+            "effect": "[[parameters('effect')]",
+            "details": {
+              "type": "Microsoft.Sql/servers/advancedThreatProtectionSettings",
+              "name": "Default",
+              "evaluationDelay": "AfterProvisioning",
+              "existenceCondition": {
+                "field": "Microsoft.Sql/servers/advancedThreatProtectionSettings/state",
+                "equals": "Enabled"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/policyDefinitions",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('sqlMiPolicyDefinitionName')]",
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Azure SQL Managed Instance) - Resource Level Audit",
+        "policyType": "Custom",
+        "mode": "All",
+        "description": "各 Azure SQL Managed Instance（Microsoft.Sql/managedInstances）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。Azure SQL Database（servers）は対象外です。",
         "metadata": {
           "version": "1.0.0",
           "category": "Security Center"
@@ -59,17 +120,119 @@
         "policyRule": {
           "if": {
             "field": "type",
-            "equals": "Microsoft.Storage/storageAccounts"
+            "equals": "Microsoft.Sql/managedInstances"
           },
           "then": {
-            "effect": "[parameters('effect')]",
+            "effect": "[[parameters('effect')]",
             "details": {
-              "type": "Microsoft.Security/defenderForStorageSettings",
-              "name": "current",
+              "type": "Microsoft.Sql/managedInstances/advancedThreatProtectionSettings",
+              "name": "Default",
               "evaluationDelay": "AfterProvisioning",
               "existenceCondition": {
-                "field": "Microsoft.Security/defenderForStorageSettings/isEnabled",
-                "equals": "true"
+                "field": "Microsoft.Sql/managedInstances/advancedThreatProtectionSettings/state",
+                "equals": "Enabled"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/policyDefinitions",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('synapseDedPolicyDefinitionName')]",
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Synapse Dedicated SQL Pool) - Resource Level Audit",
+        "policyType": "Custom",
+        "mode": "All",
+        "description": "旧来の Synapse Analytics 専用 SQL プール（Microsoft.Sql/servers の kind に analytics を含む）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。",
+        "metadata": {
+          "version": "1.0.0",
+          "category": "Security Center"
+        },
+        "parameters": {
+          "effect": {
+            "type": "String",
+            "metadata": {
+              "displayName": "Effect",
+              "description": "AuditIfNotExists または Disabled"
+            },
+            "allowedValues": [
+              "AuditIfNotExists",
+              "Disabled"
+            ],
+            "defaultValue": "AuditIfNotExists"
+          }
+        },
+        "policyRule": {
+          "if": {
+            "allOf": [
+              {
+                "field": "type",
+                "equals": "Microsoft.Sql/servers"
+              },
+              {
+                "field": "kind",
+                "contains": "analytics"
+              }
+            ]
+          },
+          "then": {
+            "effect": "[[parameters('effect')]",
+            "details": {
+              "type": "Microsoft.Sql/servers/advancedThreatProtectionSettings",
+              "name": "Default",
+              "evaluationDelay": "AfterProvisioning",
+              "existenceCondition": {
+                "field": "Microsoft.Sql/servers/advancedThreatProtectionSettings/state",
+                "equals": "Enabled"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/policyDefinitions",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('synapseWsPolicyDefinitionName')]",
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Synapse Workspace) - Resource Level Audit",
+        "policyType": "Custom",
+        "mode": "All",
+        "description": "各 Azure Synapse Analytics ワークスペース（Microsoft.Synapse/workspaces）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。",
+        "metadata": {
+          "version": "1.0.0",
+          "category": "Security Center"
+        },
+        "parameters": {
+          "effect": {
+            "type": "String",
+            "metadata": {
+              "displayName": "Effect",
+              "description": "AuditIfNotExists または Disabled"
+            },
+            "allowedValues": [
+              "AuditIfNotExists",
+              "Disabled"
+            ],
+            "defaultValue": "AuditIfNotExists"
+          }
+        },
+        "policyRule": {
+          "if": {
+            "field": "type",
+            "equals": "Microsoft.Synapse/workspaces"
+          },
+          "then": {
+            "effect": "[[parameters('effect')]",
+            "details": {
+              "type": "Microsoft.Synapse/workspaces/securityAlertPolicies",
+              "name": "Default",
+              "evaluationDelay": "AfterProvisioning",
+              "existenceCondition": {
+                "field": "Microsoft.Synapse/workspaces/securityAlertPolicies/state",
+                "equals": "Enabled"
               }
             }
           }
@@ -80,14 +243,74 @@
       "condition": "[parameters('assignPolicy')]",
       "type": "Microsoft.Authorization/policyAssignments",
       "apiVersion": "2023-04-01",
-      "name": "[variables('policyAssignmentName')]",
+      "name": "[variables('sqlDbPolicyAssignmentName')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Authorization/policyDefinitions', variables('policyDefinitionName'))]"
+        "[resourceId('Microsoft.Authorization/policyDefinitions', variables('sqlDbPolicyDefinitionName'))]"
       ],
       "properties": {
-        "displayName": "[Custom] Defender for Storage - Resource Level Audit",
-        "description": "各 Storage Account に対して、Defender for Storage がリソース単位（isEnabled: true）で有効化されていることを監査します。",
-        "policyDefinitionId": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('policyDefinitionName'))]",
+        "displayName": "[Custom] Defender for SQL (Azure SQL Database) - Resource Level Audit",
+        "description": "各 Azure SQL Server（Microsoft.Sql/servers）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。",
+        "policyDefinitionId": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('sqlDbPolicyDefinitionName'))]",
+        "enforcementMode": "Default",
+        "parameters": {
+          "effect": {
+            "value": "[parameters('policyEffect')]"
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('sqlMiPolicyAssignmentName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/policyDefinitions', variables('sqlMiPolicyDefinitionName'))]"
+      ],
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Azure SQL Managed Instance) - Resource Level Audit",
+        "description": "各 Azure SQL Managed Instance（Microsoft.Sql/managedInstances）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。",
+        "policyDefinitionId": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('sqlMiPolicyDefinitionName'))]",
+        "enforcementMode": "Default",
+        "parameters": {
+          "effect": {
+            "value": "[parameters('policyEffect')]"
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('synapseDedPolicyAssignmentName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/policyDefinitions', variables('synapseDedPolicyDefinitionName'))]"
+      ],
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Synapse Dedicated SQL Pool) - Resource Level Audit",
+        "description": "旧来の Synapse Analytics 専用 SQL プール（Microsoft.Sql/servers の kind に analytics を含む）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。",
+        "policyDefinitionId": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('synapseDedPolicyDefinitionName'))]",
+        "enforcementMode": "Default",
+        "parameters": {
+          "effect": {
+            "value": "[parameters('policyEffect')]"
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('synapseWsPolicyAssignmentName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/policyDefinitions', variables('synapseWsPolicyDefinitionName'))]"
+      ],
+      "properties": {
+        "displayName": "[Custom] Defender for SQL (Synapse Workspace) - Resource Level Audit",
+        "description": "各 Azure Synapse Analytics ワークスペース（Microsoft.Synapse/workspaces）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。",
+        "policyDefinitionId": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('synapseWsPolicyDefinitionName'))]",
         "enforcementMode": "Default",
         "parameters": {
           "effect": {
@@ -98,14 +321,41 @@
     }
   ],
   "outputs": {
-    "policyDefinitionId": {
+    "sqlDbPolicyDefinitionId": {
       "type": "string",
-      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('policyDefinitionName'))]"
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('sqlDbPolicyDefinitionName'))]"
     },
-    "policyAssignmentId": {
+    "sqlDbPolicyAssignmentId": {
       "condition": "[parameters('assignPolicy')]",
       "type": "string",
-      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', variables('policyAssignmentName'))]"
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', variables('sqlDbPolicyAssignmentName'))]"
+    },
+    "sqlMiPolicyDefinitionId": {
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('sqlMiPolicyDefinitionName'))]"
+    },
+    "sqlMiPolicyAssignmentId": {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', variables('sqlMiPolicyAssignmentName'))]"
+    },
+    "synapseDedPolicyDefinitionId": {
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('synapseDedPolicyDefinitionName'))]"
+    },
+    "synapseDedPolicyAssignmentId": {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', variables('synapseDedPolicyAssignmentName'))]"
+    },
+    "synapseWsPolicyDefinitionId": {
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', variables('synapseWsPolicyDefinitionName'))]"
+    },
+    "synapseWsPolicyAssignmentId": {
+      "condition": "[parameters('assignPolicy')]",
+      "type": "string",
+      "value": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', variables('synapseWsPolicyAssignmentName'))]"
     }
   }
 }

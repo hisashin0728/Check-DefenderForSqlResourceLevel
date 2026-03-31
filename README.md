@@ -8,7 +8,7 @@ Azure Policy カスタム定義 — 各 Azure SQL Server および Azure SQL Man
 
 ## 概要
 
-本リポジトリには **2 つのカスタムポリシー定義** が含まれます。
+本リポジトリには **4 つのカスタムポリシー定義** が含まれます。
 
 ### ポリシー 1：Azure SQL Database 用
 
@@ -36,6 +36,32 @@ Azure Policy カスタム定義 — 各 Azure SQL Server および Azure SQL Man
 | 対象リソース | `Microsoft.Sql/managedInstances` |
 | チェック対象 | `Microsoft.Sql/managedInstances/advancedThreatProtectionSettings` |
 
+### ポリシー 3：Synapse Dedicated SQL Pool 用
+
+| 項目 | 値 |
+|---|---|
+| ポリシー名 | `custom-defender-for-synapse-ded-audit` |
+| 表示名 | `[Custom] Defender for SQL (Synapse Dedicated SQL Pool) - Resource Level Audit` |
+| カテゴリ | Security Center |
+| バージョン | 1.0.0 |
+| モード | All |
+| Effect | AuditIfNotExists（デフォルト） / Disabled |
+| 対象リソース | `Microsoft.Sql/servers`（`kind` に `analytics` を含むもの） |
+| チェック対象 | `Microsoft.Sql/servers/advancedThreatProtectionSettings` |
+
+### ポリシー 4：Synapse Workspace 用
+
+| 項目 | 値 |
+|---|---|
+| ポリシー名 | `custom-defender-for-synapse-ws-audit` |
+| 表示名 | `[Custom] Defender for SQL (Synapse Workspace) - Resource Level Audit` |
+| カテゴリ | Security Center |
+| バージョン | 1.0.0 |
+| モード | All |
+| Effect | AuditIfNotExists（デフォルト） / Disabled |
+| 対象リソース | `Microsoft.Synapse/workspaces` |
+| チェック対象 | `Microsoft.Synapse/workspaces/securityAlertPolicies` |
+
 ---
 
 ## 動作
@@ -50,6 +76,18 @@ Microsoft.Sql/servers が存在する（Synapse Analytics を除く）
 【Azure SQL Managed Instance】
 Microsoft.Sql/managedInstances が存在する
   └─ advancedThreatProtectionSettings/Default の state == Enabled か？
+       ├─ YES → Compliant
+       └─ NO  → NonCompliant（AuditIfNotExists）
+
+【Synapse Dedicated SQL Pool】
+Microsoft.Sql/servers（kind に analytics を含む）が存在する
+  └─ advancedThreatProtectionSettings/Default の state == Enabled か？
+       ├─ YES → Compliant
+       └─ NO  → NonCompliant（AuditIfNotExists）
+
+【Synapse Workspace】
+Microsoft.Synapse/workspaces が存在する
+  └─ securityAlertPolicies/Default の state == Enabled か？
        ├─ YES → Compliant
        └─ NO  → NonCompliant（AuditIfNotExists）
 ```
@@ -98,13 +136,13 @@ az deployment mg create `
 
 | パラメーター | 型 | デフォルト | 説明 |
 |---|---|---|---|
-| `policyEffect` | string | `AuditIfNotExists` | ポリシーの Effect（`AuditIfNotExists` / `Disabled`）。2 ポリシー共通。 |
+| `policyEffect` | string | `AuditIfNotExists` | ポリシーの Effect（`AuditIfNotExists` / `Disabled`）。4 ポリシー共通。 |
 | `assignPolicy` | bool | `true` | `true` にすると、定義作成と同時に管理グループへの割り当ても実施 |
 
 #### ファイル構成
 
 ```
-azuredeploy.json              # ARM テンプレート本体（2 ポリシー定義 + 2 割り当て）
+azuredeploy.json              # ARM テンプレート本体（4 ポリシー定義 + 4 割り当て）
 azuredeploy.parameters.json   # パラメーターファイル
 ```
 
@@ -162,6 +200,46 @@ az policy assignment create `
   --policy "/providers/Microsoft.Management/managementGroups/$mgId/providers/Microsoft.Authorization/policyDefinitions/custom-defender-for-sql-mi-resource-audit" `
   --scope "/providers/Microsoft.Management/managementGroups/$mgId" `
   --enforcement-mode Default
+
+# ─── Synapse Dedicated SQL Pool 用 ───
+$policySynDed = Get-Content "combined-policy-synapse-dedicated.json" -Raw | ConvertFrom-Json
+$policySynDed.properties.policyRule | ConvertTo-Json -Depth 10 | Out-File "$env:TEMP\policy-rule-syn-ded.json" -Encoding utf8
+$policySynDed.properties.parameters | ConvertTo-Json -Depth 10 | Out-File "$env:TEMP\policy-params-syn-ded.json" -Encoding utf8
+
+az policy definition create `
+  --name "custom-defender-for-synapse-ded-audit" `
+  --rules "$env:TEMP\policy-rule-syn-ded.json" `
+  --params "$env:TEMP\policy-params-syn-ded.json" `
+  --mode All `
+  --display-name "[Custom] Defender for SQL (Synapse Dedicated SQL Pool) - Resource Level Audit" `
+  --management-group $mgId
+
+az policy assignment create `
+  --name "dfsql-syn-ded-audit" `
+  --display-name "[Custom] Defender for SQL (Synapse Dedicated SQL Pool) - Resource Level Audit" `
+  --policy "/providers/Microsoft.Management/managementGroups/$mgId/providers/Microsoft.Authorization/policyDefinitions/custom-defender-for-synapse-ded-audit" `
+  --scope "/providers/Microsoft.Management/managementGroups/$mgId" `
+  --enforcement-mode Default
+
+# ─── Synapse Workspace 用 ───
+$policySynWs = Get-Content "combined-policy-synapse-workspace.json" -Raw | ConvertFrom-Json
+$policySynWs.properties.policyRule | ConvertTo-Json -Depth 10 | Out-File "$env:TEMP\policy-rule-syn-ws.json" -Encoding utf8
+$policySynWs.properties.parameters | ConvertTo-Json -Depth 10 | Out-File "$env:TEMP\policy-params-syn-ws.json" -Encoding utf8
+
+az policy definition create `
+  --name "custom-defender-for-synapse-ws-audit" `
+  --rules "$env:TEMP\policy-rule-syn-ws.json" `
+  --params "$env:TEMP\policy-params-syn-ws.json" `
+  --mode All `
+  --display-name "[Custom] Defender for SQL (Synapse Workspace) - Resource Level Audit" `
+  --management-group $mgId
+
+az policy assignment create `
+  --name "dfsql-syn-ws-audit" `
+  --display-name "[Custom] Defender for SQL (Synapse Workspace) - Resource Level Audit" `
+  --policy "/providers/Microsoft.Management/managementGroups/$mgId/providers/Microsoft.Authorization/policyDefinitions/custom-defender-for-synapse-ws-audit" `
+  --scope "/providers/Microsoft.Management/managementGroups/$mgId" `
+  --enforcement-mode Default
 ```
 
 ---
@@ -187,6 +265,20 @@ az policy state list `
 az policy state list `
   --subscription <Subscription ID> `
   --filter "policyAssignmentName eq 'dfsql-mi-resource-audit'" `
+  --query "[].{resource:resourceId, compliant:complianceState}" `
+  -o table
+
+# Synapse Dedicated SQL Pool の結果確認
+az policy state list `
+  --subscription <Subscription ID> `
+  --filter "policyAssignmentName eq 'dfsql-syn-ded-audit'" `
+  --query "[].{resource:resourceId, compliant:complianceState}" `
+  -o table
+
+# Synapse Workspace の結果確認
+az policy state list `
+  --subscription <Subscription ID> `
+  --filter "policyAssignmentName eq 'dfsql-syn-ws-audit'" `
   --query "[].{resource:resourceId, compliant:complianceState}" `
   -o table
 ```
@@ -230,16 +322,18 @@ Defender for SQL はサブスクリプションレベルで一括有効化（`Mi
 | 1 | ビルトイン | `Azure Defender for SQL should be enabled for unprotected Azure SQL servers`<br>（ID: `abfb4388-5bf4-4ad7-ba82-2cd2f41ceae9`） | サブスクリプション単位（`securityAlertPolicies/state == Enabled`） |
 | 2 | カスタム | `custom-defender-for-sql-db-resource-audit` | リソース単位 SQL DB（`advancedThreatProtectionSettings/state == Enabled`） |
 | 3 | カスタム | `custom-defender-for-sql-mi-resource-audit` | リソース単位 SQL MI（`advancedThreatProtectionSettings/state == Enabled`） |
+| 4 | カスタム | `custom-defender-for-synapse-ded-audit` | リソース単位 Synapse Dedicated SQL Pool（`advancedThreatProtectionSettings/state == Enabled`） |
+| 5 | カスタム | `custom-defender-for-synapse-ws-audit` | リソース単位 Synapse Workspace（`securityAlertPolicies/state == Enabled`） |
 
 #### コンプライアンス状態の解釈
 
 ```
-サブスクリプション単位（#1）   SQL DB リソース単位（#2）   SQL MI リソース単位（#3）   解釈
-─────────────────────────────────────────────────────────────────────────────────────
-Compliant                      Compliant                    Compliant                  ✅ 全レベルで有効
-Compliant                      NonCompliant                 -                          ✅ サブスク有効（リソース単位未設定だが実質保護中）
-NonCompliant                   Compliant                    Compliant                  ✅ リソース単位で個別有効化済み
-NonCompliant                   NonCompliant                 NonCompliant               ❌ どのレベルも未設定 → 要対応
+サブスク単位（#1）   SQL DB（#2）    SQL MI（#3）    Syn Ded（#4）   Syn WS（#5）    解釈
+──────────────────────────────────────────────────────────────────────────────────────────
+Compliant           Compliant       Compliant       Compliant       Compliant       ✅ 全レベルで有効
+Compliant           NonCompliant    -               NonCompliant    -               ✅ サブスク有効（実質保護中）
+NonCompliant        Compliant       Compliant       Compliant       Compliant       ✅ リソース単位で個別有効化済み
+NonCompliant        NonCompliant    NonCompliant    NonCompliant    NonCompliant    ❌ どのレベルも未設定 → 要対応
 ```
 
 > **補足:** Azure Policy は「イニシアティブ内の複数ポリシーの AND / OR」を直接表現できません。上記の解釈は各ポリシーの結果を**手動で突き合わせる**運用を前提としています。
@@ -252,8 +346,11 @@ NonCompliant                   NonCompliant                 NonCompliant        
 |---|---|---|
 | `custom-defender-for-sql-db-resource-audit`（本ポリシー） | リソース単位 `state: Enabled` | 各 Azure SQL Server |
 | `custom-defender-for-sql-mi-resource-audit`（本ポリシー） | リソース単位 `state: Enabled` | 各 Azure SQL Managed Instance |
+| `custom-defender-for-synapse-ded-audit`（本ポリシー） | リソース単位 `state: Enabled` | Synapse Dedicated SQL Pool |
+| `custom-defender-for-synapse-ws-audit`（本ポリシー） | リソース単位 `state: Enabled` | Synapse Workspace |
 | `Azure Defender for SQL should be enabled for unprotected Azure SQL servers`（ビルトイン） | サブスクリプション単位の Defender for SQL 有効化 | サブスクリプション |
 | `Azure Defender for SQL should be enabled for unprotected SQL Managed Instances`（ビルトイン） | サブスクリプション単位の Defender for SQL MI 有効化 | サブスクリプション |
+| `Microsoft Defender for SQL should be enabled for unprotected Synapse workspaces`（ビルトイン, ID: `d31e5c31-63b2-4f12-887b-e49456834fa1`） | サブスクリプション単位の Synapse Workspace 有効化 | サブスクリプション |
 
 ---
 
@@ -261,10 +358,12 @@ NonCompliant                   NonCompliant                 NonCompliant        
 
 ```
 .
-├── azuredeploy.json              # ARM テンプレート（2 ポリシー定義 + 2 割り当て）
-├── azuredeploy.parameters.json   # ARM テンプレート パラメーターファイル
-├── combined-policy.json          # Azure SQL Database 用ポリシー定義（CLI デプロイ用）
-└── combined-policy-mi.json       # Azure SQL Managed Instance 用ポリシー定義（CLI デプロイ用）
+├── azuredeploy.json                          # ARM テンプレート（4 ポリシー定義 + 4 割り当て）
+├── azuredeploy.parameters.json               # ARM テンプレート パラメーターファイル
+├── combined-policy.json                      # Azure SQL Database 用ポリシー定義（CLI デプロイ用）
+├── combined-policy-mi.json                   # Azure SQL Managed Instance 用ポリシー定義（CLI デプロイ用）
+├── combined-policy-synapse-dedicated.json    # Synapse Dedicated SQL Pool 用ポリシー定義（CLI デプロイ用）
+└── combined-policy-synapse-workspace.json    # Synapse Workspace 用ポリシー定義（CLI デプロイ用）
 ```
 
 ---
