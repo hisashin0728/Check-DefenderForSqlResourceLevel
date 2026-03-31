@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-09-01/policyDefinition.json#",
-  "name": "custom-defender-for-sql-db-resource-audit",
+  "name": "custom-defender-for-storage-resource-audit",
   "properties": {
-    "displayName": "[Custom] Defender for SQL (Azure SQL Database) - Resource Level Audit",
+    "displayName": "[Custom] Defender for Storage - Resource Level Audit",
     "policyType": "Custom",
     "mode": "All",
-    "description": "各 Azure SQL Server（Microsoft.Sql/servers）に対して、Defender for SQL がリソース単位（state: Enabled）で有効化されていることを監査します。Azure SQL Managed Instance は対象外です。",
+    "description": "各 Storage Account に対して、Defender for Storage がリソース単位（isEnabled: true）で有効化されていることを監査します。",
     "metadata": {
       "version": "1.0.0",
       "category": "Security Center"
@@ -26,26 +26,18 @@
     },
     "policyRule": {
       "if": {
-        "allOf": [
-          {
-            "field": "type",
-            "equals": "Microsoft.Sql/servers"
-          },
-          {
-            "field": "kind",
-            "notContains": "analytics"
-          }
-        ]
+        "field": "type",
+        "equals": "Microsoft.Storage/storageAccounts"
       },
       "then": {
         "effect": "[parameters('effect')]",
         "details": {
-          "type": "Microsoft.Sql/servers/advancedThreatProtectionSettings",
-          "name": "Default",
+          "type": "Microsoft.Security/defenderForStorageSettings",
+          "name": "current",
           "evaluationDelay": "AfterProvisioning",
           "existenceCondition": {
-            "field": "Microsoft.Sql/servers/advancedThreatProtectionSettings/state",
-            "equals": "Enabled"
+            "field": "Microsoft.Security/defenderForStorageSettings/isEnabled",
+            "equals": "true"
           }
         }
       }
